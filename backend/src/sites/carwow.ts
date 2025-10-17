@@ -1,0 +1,802 @@
+// Carwow site config for Stagehand car search
+import type {
+  SiteConfig,
+  SearchParams,
+  LoginCredentials,
+} from "../../index.js";
+import { modelGroupMap } from "./carwow/model-groups.js";
+
+/**
+ * Carwow Site Configuration
+ * This function returns a complete site configuration object for the Carwow car dealership website
+ * It handles authentication, filtering, and data extraction for car searches
+ */
+export function carwowConfig(stagehand: any): SiteConfig {
+  return {
+    name: "carwow",
+    baseUrl: "https://dealers.carwow.co.uk",
+    loginUrl:
+      "https://auth.carwow.co.uk/u/login?state=hKFo2SB6SjR1UFZkeHBMcUhfc0h5SS15Z0p0ZktYbmxPUVV4WaFur3VuaXZlcnNhbC1sb2dpbqN0aWTZIGxITkZHM2tTM0l4RGRFQVhJSVpKWjFaQ25xM1pmNEJHo2NpZNkgSVNLd0IxcGJMSjl1UVVoRnkwdFhPYzc2aDJwdUthUlM",
+
+    /**
+     * LOGIN FUNCTION
+     * Handles user authentication to the Carwow website
+     * Navigates to login page, fills credentials, and completes the login process
+     */
+    login: async (page: any, credentials: LoginCredentials) => {
+      try {
+        // Navigate to the Carwow authentication page
+        await page.goto(
+          "https://auth.carwow.co.uk/u/login?state=hKFo2SB6SjR1UFZkeHBMcUhfc0h5SS15Z0p0ZktYbmxPUVV4WaFur3VuaXZlcnNhbC1sb2dpbqN0aWTZIGxITkZHM2tTM0l4RGRFQVhJSVpKWjFaQ25xM1pmNEJHo2NpZNkgSVNLd0IxcGJMSjl1UVVoRnkwdFhPYzc2aDJwdUthUlM"
+        );
+
+        // Wait for page to fully load and stabilize
+        await page.waitForLoadState("networkidle");
+        await page.waitForTimeout(2_000);
+
+        // Log current URL for debugging purposes
+        const currentUrl = page.url();
+        stagehand.log({
+          category: "debug",
+          message: `Current URL: ${currentUrl}`,
+        });
+
+        // Fill in username and password fields
+        await page.fill("#username", credentials.username);
+        await page.fill("#password", credentials.password);
+
+        // Click the continue button to proceed with login
+        await page.getByRole("button", { name: "Continue" }).click();
+        await page.waitForTimeout(2000);
+
+        // Log successful login completion
+        stagehand.log({
+          category: "debug",
+          message: "Login completed successfully",
+        });
+      } catch (error) {
+        // Log any login errors and re-throw for handling upstream
+        stagehand.log({
+          category: "error",
+          message: `Login error: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        });
+        throw error;
+      }
+    },
+
+    /**
+     * APPLY FILTERS FUNCTION
+     * Applies search filters to narrow down car results based on user parameters
+     * Handles make, model, age, and mileage filtering with special logic for series models
+     * Make and model are now optional - can search with just other filters
+     */
+    applyFilters: async (page: any, params: SearchParams) => {
+      try {
+        stagehand.log({
+          category: "debug",
+          message: `Filtering Carwow for ${params.make || "all makes"} ${
+            params.model || "all models"
+          }`,
+        });
+
+        // Wait for page to be fully loaded before applying filters
+        await page.waitForLoadState("domcontentloaded");
+        await page.waitForLoadState("networkidle");
+        await page.waitForTimeout(2000);
+
+        // STEP 1: Select listing type (All vehicles) - with error handling
+        try {
+          const listingTypeLabel = await page.$(
+            'label[for="filters-modal-desktop-listing_type__all"]'
+          );
+          if (listingTypeLabel) {
+            await listingTypeLabel.click();
+            await page.waitForTimeout(1000);
+          } else {
+            stagehand.log({
+              category: "warn",
+              message: "Listing type filter not found, continuing without it",
+            });
+          }
+        } catch (error) {
+          stagehand.log({
+            category: "warn",
+            message: `Could not set listing type: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          });
+        }
+
+        // STEP 2: Apply Make filter (optional)
+        let makeSelected = false;
+        if (params.make && params.make.trim()) {
+          try {
+            const makeButton = await page.getByRole("button", { name: "Make" });
+            if (await makeButton.isVisible()) {
+              await makeButton.click();
+              await page.waitForTimeout(1000);
+            } else {
+              stagehand.log({
+                category: "warn",
+                message:
+                  "Make filter button not visible, continuing without make filter",
+              });
+              (page as any)._carwowModelApplied = false;
+              return;
+            }
+
+            // Search for the specified make in the filter
+            try {
+              const searchInput = await page.$(
+                'input[data-selling--filters-search-target="searchInput"][id="brand_slugs-search"]'
+              );
+              if (searchInput) {
+                // Search input exists - use it
+                await searchInput.fill(params.make);
+                await page.waitForTimeout(1000);
+                console.log(`✅ Used search input for make: ${params.make}`);
+              } else {
+                // No search input - try direct selection
+                console.log(
+                  `No search input found for make, trying direct selection...`
+                );
+              }
+            } catch (error) {
+              stagehand.log({
+                category: "warn",
+                message: `Could not use search input for make: ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+              });
+            }
+
+            // Handle special case for Land Rover -> land-rover (URL slug conversion)
+            let makeForCheckbox = params.make.toLowerCase();
+            if (params.make.toLowerCase() === "land rover") {
+              makeForCheckbox = "land-rover";
+            }
+
+            // Select the make checkbox - with error handling
+            try {
+              const makeCheckbox = await page.$(
+                `input[type="checkbox"][name="brand_slugs[]"][value*="${makeForCheckbox}"]`
+              );
+              if (makeCheckbox && (await makeCheckbox.isVisible())) {
+                await makeCheckbox.check();
+                makeSelected = true;
+                console.log(`✅ Make selected: ${params.make}`);
+              } else {
+                // If direct selection failed, try to find by label text
+                console.log(
+                  `Direct checkbox selection failed, trying to find by label...`
+                );
+                const allMakeCheckboxes = await page.$$(
+                  'input[type="checkbox"][name="brand_slugs[]"]'
+                );
+
+                for (const checkbox of allMakeCheckboxes) {
+                  try {
+                    const label = await checkbox.evaluate((cb: any) => {
+                      const labelElement = cb.closest("label");
+                      return labelElement
+                        ? labelElement.textContent?.trim()
+                        : null;
+                    });
+
+                    if (
+                      label &&
+                      label.toLowerCase().includes(params.make.toLowerCase())
+                    ) {
+                      await checkbox.check();
+                      makeSelected = true;
+                      console.log(`✅ Make selected by label: ${label}`);
+                      break;
+                    }
+                  } catch (e) {
+                    // Continue to next checkbox
+                  }
+                }
+              }
+            } catch (error) {
+              stagehand.log({
+                category: "warn",
+                message: `Could not select make: ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+              });
+            }
+
+            if (!makeSelected) {
+              stagehand.log({
+                category: "error",
+                message: `Could not select make: ${params.make}`,
+              });
+              (page as any)._carwowModelApplied = false;
+              return;
+            }
+          } catch (error) {
+            stagehand.log({
+              category: "warn",
+              message: `Could not open make filter: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            });
+            (page as any)._carwowModelApplied = false;
+            return;
+          }
+        } else {
+          console.log("ℹ️ [Carwow] No make specified - will search all makes");
+          makeSelected = true; // Allow all makes
+        }
+
+        // STEP 3: Apply Model filter (optional, but requires make)
+        if (
+          params.make &&
+          params.make.trim() &&
+          params.model &&
+          params.model.trim()
+        ) {
+          // Wait for Model filter to become available
+          try {
+            await page.waitForSelector(
+              'button.chip:has(span:has-text("Model"))',
+              { timeout: 10000 }
+            );
+          } catch (error) {
+            stagehand.log({
+              category: "warn",
+              message: "Model filter button not found within timeout",
+            });
+            (page as any)._carwowModelApplied = false;
+            return;
+          }
+
+          // Open Model filter dropdown
+          await page.click(
+            'button.chip[data-selling--filters-search-target="button"]:has-text("Model")'
+          );
+          await page.waitForTimeout(1000);
+
+          // Check if this is a series model that needs special handling
+          // Series models contain multiple comma-separated values (e.g., "1 Series, 2 Series, 3 Series")
+          const modelGroup =
+            modelGroupMap[params.make]?.[params.model] || params.model;
+
+          if (modelGroup.includes(",")) {
+            // SERIES MODEL HANDLING: Skip search box and go straight to checkbox selection
+            console.log(
+              `Skipping search box for series model: ${params.model}`
+            );
+            console.log(`Will select models: ${modelGroup}`);
+          } else {
+            // INDIVIDUAL MODEL HANDLING: Try search box first, fallback to direct selection
+            console.log(`Looking for individual model: ${params.model}`);
+
+            // First, try to use search input if it exists
+            const modelSearchInput = await page.$(
+              'input[data-selling--filters-search-target="searchInput"][id="ranges-search"]'
+            );
+
+            if (modelSearchInput) {
+              // Search input exists - use it
+              try {
+                await modelSearchInput.fill(params.model);
+                await page.waitForTimeout(1000);
+                console.log(`✅ Model search input used for: ${params.model}`);
+              } catch (error) {
+                stagehand.log({
+                  category: "warn",
+                  message: `Model search input failed: ${
+                    error instanceof Error ? error.message : String(error)
+                  }`,
+                });
+              }
+            } else {
+              console.log(
+                `No model search input found, will use direct selection`
+              );
+            }
+          }
+
+          // Handle model checkbox selection
+          if (modelGroup.includes(",")) {
+            // SERIES MODEL: Select multiple models from the series
+            const models = modelGroup.split(",");
+            console.log(
+              `Selecting ${models.length} models for series: ${params.model}`
+            );
+
+            // Iterate through each model in the series and select their checkboxes
+            for (const model of models) {
+              try {
+                const checkbox = page
+                  .locator(
+                    `input[type="checkbox"][name="ranges[]"][value="${model.trim()}"]`
+                  )
+                  .first();
+
+                if (await checkbox.isVisible()) {
+                  await checkbox.check();
+                  console.log(`✅ Selected: ${model.trim()}`);
+                } else {
+                  console.log(`⚠️ Checkbox not visible for: ${model.trim()}`);
+                }
+              } catch (error) {
+                console.log(
+                  `⚠️ Error selecting model ${model.trim()}: ${error}`
+                );
+              }
+            }
+
+            console.log(
+              `✅ [Carwow] Series "${params.model}" filter applied successfully - selected ${models.length} models`
+            );
+            (page as any)._carwowModelApplied = true;
+          } else {
+            // INDIVIDUAL MODEL: Find and select the best matching model
+            console.log(`Looking for model: ${params.model}`);
+
+            // First, try to find an exact match
+            let exactCheckbox = page
+              .locator(
+                `input[type="checkbox"][name="ranges[]"][value="${modelGroup}"]`
+              )
+              .first();
+
+            // If exact match not found, look for partial matches
+            if (!(await exactCheckbox.isVisible())) {
+              console.log(
+                `Exact match not found for "${modelGroup}", looking for partial matches...`
+              );
+
+              // Get all available model checkboxes to find alternatives
+              const allModelCheckboxes = await page.$$(
+                'input[type="checkbox"][name="ranges[]"]'
+              );
+              const availableModels = [];
+
+              for (const checkbox of allModelCheckboxes) {
+                const value = await checkbox.getAttribute("value");
+                if (value) {
+                  availableModels.push(value);
+                }
+              }
+
+              // Find models that contain our search term
+              const matchingModels = availableModels.filter((model) =>
+                model.toLowerCase().includes(modelGroup.toLowerCase())
+              );
+
+              if (matchingModels.length > 0) {
+                console.log(
+                  `Found ${
+                    matchingModels.length
+                  } partial matches: ${matchingModels.join(", ")}`
+                );
+
+                // Sort by relevance: exact matches first, then shortest matches (likely base models)
+                const sortedMatches = matchingModels.sort((a, b) => {
+                  const aExact = a.toLowerCase() === modelGroup.toLowerCase();
+                  const bExact = b.toLowerCase() === modelGroup.toLowerCase();
+
+                  if (aExact && !bExact) return -1;
+                  if (!aExact && bExact) return 1;
+
+                  // If both are partial matches, prefer shorter names (likely base models)
+                  return a.length - b.length;
+                });
+
+                const bestMatch = sortedMatches[0];
+                console.log(`Selecting best match: ${bestMatch}`);
+
+                exactCheckbox = page
+                  .locator(
+                    `input[type="checkbox"][name="ranges[]"][value="${bestMatch}"]`
+                  )
+                  .first();
+              }
+            }
+
+            // Select the found model checkbox
+            if (await exactCheckbox.isVisible()) {
+              await exactCheckbox.check();
+              console.log(
+                `✅ [Carwow] Model "${params.model}" filter applied successfully`
+              );
+              (page as any)._carwowModelApplied = true;
+            } else {
+              console.log(
+                `⚠️ [Carwow] Model "${params.model}" not available in filter options. Will return 0 results.`
+              );
+              (page as any)._carwowModelApplied = false;
+              return;
+            }
+          }
+
+          // Only click the Model button again if we used the search box (individual models)
+          if (!modelGroup.includes(",")) {
+            await page.waitForTimeout(1000);
+            await page.click(
+              'button.chip[data-selling--filters-search-target="button"]:has-text("Model")'
+            );
+          }
+        } else if (params.make && params.make.trim()) {
+          console.log(
+            "ℹ️ [Carwow] No model specified - will search all models for selected make"
+          );
+          (page as any)._carwowModelApplied = true; // Allow all models for selected make
+        } else {
+          console.log("ℹ️ [Carwow] No make specified - will search all models");
+          (page as any)._carwowModelApplied = true; // Allow all models
+        }
+
+        // STEP 4: Apply Age filter (if specified)
+        if (params.minAge || params.maxAge) {
+          await page.click('button.chip:has-text("Age")');
+
+          // Set minimum age if within valid range (0-20 years)
+          if (params.minAge && params.minAge > 0 && params.minAge <= 20) {
+            await page.selectOption(
+              'select[data-selling--range-select-target="minRangeSelect"]',
+              String(params.minAge)
+            );
+          }
+
+          // Set maximum age if within valid range (0-20 years)
+          if (params.maxAge && params.maxAge > 0 && params.maxAge <= 20) {
+            await page.selectOption(
+              'select[data-selling--range-select-target="maxRangeSelect"]',
+              String(params.maxAge)
+            );
+          }
+        }
+
+        // STEP 5: Apply Mileage filter (if specified)
+        if (params.minMileage || params.maxMileage) {
+          await page.click(
+            'button.chip:has(span.chip__label:has-text("Mileage"))'
+          );
+
+          // Helper function to round mileage to nearest 10,000-mile step
+          // Carwow only accepts specific mileage increments
+          function roundToMileageStep(value: number) {
+            return Math.floor(value / 10000) * 10000;
+          }
+
+          // Wait for the min and max mileage selectors to be visible
+          await page.waitForSelector(
+            'select[name="mileage[]"][data-selling--range-select-target="minRangeSelect"]'
+          );
+          await page.waitForSelector(
+            'select[name="mileage[]"][data-selling--range-select-target="maxRangeSelect"]'
+          );
+
+          // Select minimum mileage if defined (10,000 - 200,000 miles)
+          if (params.minMileage) {
+            const min = roundToMileageStep(params.minMileage);
+            if (min >= 10000 && min <= 200000) {
+              await page.selectOption(
+                'select[name="mileage[]"][data-selling--range-select-target="minRangeSelect"]',
+                { value: String(min) }
+              );
+            }
+          }
+
+          // Select maximum mileage if defined (10,000 - 200,000 miles)
+          if (params.maxMileage) {
+            const max = roundToMileageStep(params.maxMileage);
+            if (max >= 10000 && max <= 200000) {
+              await page.selectOption(
+                'select[name="mileage[]"][name="mileage[]"][data-selling--range-select-target="maxRangeSelect"]',
+                { value: String(max) }
+              );
+            }
+          }
+        }
+
+        // STEP 6: Apply Price filter (if specified)
+        if (params.minPrice || params.maxPrice) {
+          try {
+            stagehand.log({
+              category: "debug",
+              message: `Applying price filter: min=${params.minPrice}, max=${params.maxPrice}`,
+            });
+
+            // Click the "More Filters" button to open the filters modal
+            const moreFiltersButton = await page.$(
+              'button.chip.listings__more-filters-stock-tab[data-controller="modal-opener"][data-modal-open="filters-modal-desktop"]'
+            );
+
+            if (moreFiltersButton) {
+              await moreFiltersButton.click();
+              await page.waitForTimeout(2000);
+              stagehand.log({
+                category: "debug",
+                message: "More Filters modal opened successfully",
+              });
+            } else {
+              stagehand.log({
+                category: "warn",
+                message: "More Filters button not found",
+              });
+              return;
+            }
+
+            // Click on "Reserve price" option in the filter modal
+            const reservePriceLabel = await page.$(
+              '.listing__filter-modal__label-container:has(.listing__filter-modal__label:has-text("Reserve price"))'
+            );
+
+            if (reservePriceLabel) {
+              await reservePriceLabel.click();
+              await page.waitForTimeout(1000);
+              stagehand.log({
+                category: "debug",
+                message: "Reserve price option selected",
+              });
+            } else {
+              stagehand.log({
+                category: "warn",
+                message: "Reserve price option not found",
+              });
+              return;
+            }
+
+            // Helper function to find the closest price option
+            function findClosestPriceOption(targetPrice: number): string {
+              const priceOptions = [
+                0, 3500, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000,
+                12000, 13000, 14000, 15000, 16000, 17000, 18000, 19000, 20000,
+                25000, 30000, 35000, 40000, 45000, 50000, 60000, 70000, 80000,
+                90000, 100000, 120000, 150000, 999999999,
+              ];
+
+              // Find the closest option that is >= target price for min, <= target price for max
+              return String(
+                priceOptions.find((price) => price >= targetPrice) || 999999999
+              );
+            }
+
+            // Set minimum price if specified
+            if (params.minPrice) {
+              const minPriceValue = findClosestPriceOption(params.minPrice);
+              const minPriceSelect = await page.$(
+                'select[name="listing_price[]"][id="filters-modal-desktop-listing_price-min"]'
+              );
+
+              if (minPriceSelect) {
+                await page.selectOption(
+                  'select[name="listing_price[]"][id="filters-modal-desktop-listing_price-min"]',
+                  { value: minPriceValue }
+                );
+                stagehand.log({
+                  category: "debug",
+                  message: `Minimum price set to: ${minPriceValue}`,
+                });
+              } else {
+                stagehand.log({
+                  category: "warn",
+                  message: "Minimum price select not found",
+                });
+              }
+            }
+
+            // Set maximum price if specified
+            if (params.maxPrice) {
+              const maxPriceValue = findClosestPriceOption(params.maxPrice);
+              const maxPriceSelect = await page.$(
+                'select[name="listing_price[]"][id="filters-modal-desktop-listing_price-max"]'
+              );
+
+              if (maxPriceSelect) {
+                await page.selectOption(
+                  'select[name="listing_price[]"][id="filters-modal-desktop-listing_price-max"]',
+                  { value: maxPriceValue }
+                );
+                stagehand.log({
+                  category: "debug",
+                  message: `Maximum price set to: ${maxPriceValue}`,
+                });
+              } else {
+                stagehand.log({
+                  category: "warn",
+                  message: "Maximum price select not found",
+                });
+              }
+            }
+
+            // Close the modal by clicking outside or finding a close button
+            // Try to find and click a close button or apply button
+            const applyButton = await page.$('button:has-text("Apply")');
+            if (applyButton) {
+              await applyButton.click();
+              await page.waitForTimeout(2000);
+              stagehand.log({
+                category: "debug",
+                message: "Price filters applied successfully",
+              });
+            } else {
+              // If no apply button, try pressing Escape or clicking outside
+              await page.keyboard.press("Escape");
+              await page.waitForTimeout(1000);
+              stagehand.log({
+                category: "debug",
+                message: "Price filters modal closed with Escape key",
+              });
+            }
+          } catch (error) {
+            stagehand.log({
+              category: "error",
+              message: `Error applying price filter: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            });
+            // Don't throw error, continue with other filters
+          }
+        }
+
+        await page.waitForTimeout(2000);
+        await page.waitForLoadState("networkidle");
+
+        // STEP 7: Trigger lazy loading by scrolling down gradually
+        // This ensures all car listings are loaded before extraction
+        await page.evaluate(async () => {
+          await new Promise((resolve) => {
+            let totalHeight = 0;
+            const distance = 200;
+
+            const timer = setInterval(() => {
+              const scrollHeight = document.body.scrollHeight;
+              window.scrollBy(0, distance);
+              totalHeight += distance;
+
+              if (totalHeight >= scrollHeight - window.innerHeight) {
+                clearInterval(timer);
+                setTimeout(resolve, 1000); // Extra wait after reaching bottom
+              }
+            }, 500);
+          });
+        });
+
+        // Final wait for all content to load
+        await page.waitForLoadState("networkidle");
+        await page.waitForLoadState("domcontentloaded");
+
+        stagehand.log({
+          category: "debug",
+          message: "Filters applied successfully for Carwow",
+        });
+      } catch (error) {
+        stagehand.log({
+          category: "error",
+          message: `Error applying filters for Carwow: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        });
+        throw error;
+      }
+    },
+
+    /**
+     * EXTRACT CARS FUNCTION
+     * Extracts car data from the filtered search results page
+     * Parses individual car cards to extract details like price, title, location, etc.
+     * Returns an array of car objects with standardized data structure
+     */
+    extractCars: async (page: any) => {
+      stagehand.log({
+        category: "debug",
+        message: "Starting extraction for Carwow",
+      });
+
+      // Check if model filter was applied successfully
+      // If not, return empty array gracefully instead of failing
+      if ((page as any)._carwowModelApplied === false) {
+        stagehand.log({
+          category: "warn",
+          message:
+            "Search was not executed due to unavailable model. Returning 0 results gracefully.",
+        });
+        return [];
+      }
+
+      // Find all car listing cards on the page
+      const cards = await page.$$(
+        'div.listings__list-item[data-listings-target="listing"]'
+      );
+      const carData = [];
+
+      // Iterate through each car card and extract relevant information
+      for (const card of cards) {
+        try {
+          // Extract car URL from the card link
+          const url = await card.$eval("a.listing-card-component", (a: any) =>
+            a.getAttribute("href")
+          );
+
+          // Extract car image URL (with fallback to empty string if not found)
+          let imageUrl = "";
+          try {
+            imageUrl = await card.$eval(
+              ".swiper-slide img",
+              (img: any) => img.src
+            );
+          } catch {
+            // imageUrl remains "" if image extraction fails
+          }
+
+          // Extract car title/name
+          const title = await card.$eval(
+            ".listing-card-component__make_and_model",
+            (el: any) => el.textContent?.trim() || ""
+          );
+
+          // Extract car price
+          const price = await card.$eval(
+            ".listing-card-price-component__price",
+            (el: any) => el.textContent?.trim() || ""
+          );
+
+          // Extract registration number (clean up multi-line text)
+          const regRaw = await card.$eval(
+            ".listing-card-license-plate-component__value",
+            (el: any) => el.textContent?.trim() || ""
+          );
+          const reg = regRaw.split("\n")[0].trim();
+
+          // Extract dealer location/delivery distance
+          const location = await card.$eval(
+            ".listing-card-distance-component__value",
+            (el: any) => el.textContent?.trim() || ""
+          );
+
+          // Extract mileage from the badges section (looks for numeric values that are likely mileage)
+          const mileage = await card.$$eval(
+            ".listing-card-component__badge",
+            (badges: any[]) => {
+              const mileageBadge = badges.find((badge) => {
+                const text = badge.textContent?.trim() || "";
+                // Look for numeric values that are likely mileage (4 digits or less, no text)
+                // Look for numeric values that are likely mileage
+                const numValue = parseInt(text.replace(/,/g, ""));
+                return (
+                  numValue >= 1000 &&
+                  numValue <= 200000 &&
+                  // Ensure it has a comma for values over 1,000 (Carwow format)
+                  (numValue < 1000 || text.includes(","))
+                );
+              });
+              return mileageBadge ? mileageBadge.textContent.trim() : "";
+            }
+          );
+
+          // Create standardized car object and add to results array
+          carData.push({
+            url: url?.startsWith("/")
+              ? `https://dealers.carwow.co.uk${url}`
+              : url,
+            imageUrl,
+            title,
+            price: price,
+            location,
+            registration: reg,
+            mileage,
+            source: "CarWow",
+            timestamp: new Date().toISOString(),
+          });
+        } catch (err) {
+          // Log warning and continue with next card if extraction fails for one
+          stagehand.log({
+            category: "warn",
+            message: "Skipping a card due to error: " + err,
+          });
+        }
+      }
+
+      // Return the extracted car data array
+      return carData;
+    },
+  };
+}
