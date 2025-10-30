@@ -53,9 +53,7 @@ class ScrapeSSEApiService {
 
   constructor() {
     // Default to localhost:3001, but can be overridden with environment variable
-    this.baseUrl =
-      import.meta.env.VITE_API_BASE_URL ||
-      "https://ryds-car-hunter-backend-5qlu.onrender.com";
+    this.baseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:3001";
   }
 
   /**

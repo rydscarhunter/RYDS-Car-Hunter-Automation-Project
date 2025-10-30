@@ -66,9 +66,7 @@ class VehicleApiService {
     // this.baseUrl =
     //   import.meta.env.VITE_API_BASE_URL ||
     //   "https://ryds-car-hunter-backend.onrender.com";
-    this.baseUrl =
-      import.meta.env.VITE_API_BASE_URL ||
-      "https://ryds-car-hunter-backend-5qlu.onrender.com";
+    this.baseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:3001";
   }
 
   // Convert frontend search params to backend API format

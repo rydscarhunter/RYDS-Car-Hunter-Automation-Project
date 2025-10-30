@@ -418,55 +418,55 @@ export function motorwayConfig(stagehand: any): SiteConfig {
         });
       }
 
-      // Extract from buy it now listings
-      try {
-        stagehand.log({
-          category: "debug",
-          message: "Extracting from buy it now listings with search parameters",
-        });
-
-        const buyItNowUrl = getListingUrl("buyItNow");
-        stagehand.log({
-          category: "debug",
-          message: `Navigating to buy it now URL: ${buyItNowUrl}`,
-        });
-
-        await page.goto(buyItNowUrl);
-        await page.waitForLoadState("domcontentloaded");
-        await page.waitForTimeout(2000);
-
-        // Verify we're on the correct page
-        const currentUrl = page.url();
-        stagehand.log({
-          category: "debug",
-          message: `Current URL after navigation: ${currentUrl}`,
-        });
-
-        const buyItNowCars = await extractCarsFromPage(page, "buy it now");
-        allCarData.push(...buyItNowCars);
-
-        stagehand.log({
-          category: "debug",
-          message: `Extracted ${buyItNowCars.length} cars from buy it now listings`,
-        });
-      } catch (error) {
-        stagehand.log({
-          category: "warn",
-          message: `Failed to extract buy it now listings: ${error}`,
-        });
-      }
+      // Extract from buy it now listings (disabled)
+      // try {
+      //   stagehand.log({
+      //     category: "debug",
+      //     message: "Extracting from buy it now listings with search parameters",
+      //   });
+      //
+      //   const buyItNowUrl = getListingUrl("buyItNow");
+      //   stagehand.log({
+      //     category: "debug",
+      //     message: `Navigating to buy it now URL: ${buyItNowUrl}`,
+      //   });
+      //
+      //   await page.goto(buyItNowUrl);
+      //   await page.waitForLoadState("domcontentloaded");
+      //   await page.waitForTimeout(2000);
+      //
+      //   // Verify we're on the correct page
+      //   const currentUrl = page.url();
+      //   stagehand.log({
+      //     category: "debug",
+      //     message: `Current URL after navigation: ${currentUrl}`,
+      //   });
+      //
+      //   const buyItNowCars = await extractCarsFromPage(page, "buy it now");
+      //   allCarData.push(...buyItNowCars);
+      //
+      //   stagehand.log({
+      //     category: "debug",
+      //     message: `Extracted ${buyItNowCars.length} cars from buy it now listings`,
+      //   });
+      // } catch (error) {
+      //   stagehand.log({
+      //     category: "warn",
+      //     message: `Failed to extract buy it now listings: ${error}`,
+      //   });
+      // }
 
       // Log breakdown by listing type
       const auctionCount = allCarData.filter(
         (car) => car.listType === "auction"
       ).length;
-      const buyItNowCount = allCarData.filter(
-        (car) => car.listType === "buy it now"
-      ).length;
+      // const buyItNowCount = allCarData.filter(
+      //   (car) => car.listType === "buy it now"
+      // ).length;
 
       stagehand.log({
         category: "debug",
-        message: `Total cars extracted: ${allCarData.length} (${auctionCount} auction, ${buyItNowCount} buy it now)`,
+        message: `Total cars extracted: ${allCarData.length}`,
       });
 
       // Return the combined car data array

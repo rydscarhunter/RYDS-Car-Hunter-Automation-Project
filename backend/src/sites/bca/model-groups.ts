@@ -161,7 +161,7 @@ export const modelGroupMap: Record<string, Record<string, string>> = {
     GLS: "GLS - Class",
     "M Class": "M - Class",
     Maybach: "Maybach Series",
-    "S Class": "S - Class",
+    S: "S - Class",
     SL: "SL - Class",
     SLC: "SLC - Class",
     SLK: "SLK - Class",

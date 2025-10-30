@@ -1,4 +1,4 @@
-import { Stagehand, Page, BrowserContext } from "@browserbasehq/stagehand";
+import { Stagehand } from "@browserbasehq/stagehand";
 import StagehandConfig, {
   StagehandConfigWithProxies,
   StagehandConfigWithoutProxies,
@@ -6,14 +6,12 @@ import StagehandConfig, {
 import chalk from "chalk";
 import boxen from "boxen";
 import * as dotenv from "dotenv";
-import * as fs from "fs";
 import { disposalnetworkConfig } from "./src/sites/disposalnetwork.js";
 import { bcaConfig } from "./src/sites/bca.js";
 import { motorwayConfig } from "./src/sites/motorway.js";
 import { carwowConfig } from "./src/sites/carwow.js";
 import { cartotradeConfig } from "./src/sites/cartotrade.js";
 import type { SearchParams, LoginCredentials } from "./src/types/index.ts";
-import { chromium } from "@playwright/test";
 
 export type { SearchParams, LoginCredentials };
 
@@ -71,12 +69,6 @@ async function setupSiteSpecificResourceBlocking(
 
     // Block by resource type
     if (blockedTypes.includes(resourceType)) {
-      console.log(
-        `🚫 [Backend] Blocked by resource type (${resourceType}): ${url.substring(
-          0,
-          80
-        )}...`
-      );
       route.abort();
       return;
     }
@@ -102,9 +94,6 @@ async function setupSiteSpecificResourceBlocking(
       url.includes(domain)
     );
     if (hasBlockedDomain) {
-      console.log(
-        `🚫 [Backend] Blocked tracking/ads: ${url.substring(0, 80)}...`
-      );
       route.abort();
       return;
     }
@@ -141,12 +130,6 @@ async function setupSiteSpecificResourceBlocking(
       const blockedExt = blockedExtensions.find((ext) =>
         url.toLowerCase().includes(ext)
       );
-      console.log(
-        `🚫 [Backend] Blocked by extension (${blockedExt}): ${url.substring(
-          0,
-          80
-        )}...`
-      );
       route.abort();
       return;
     }
@@ -161,10 +144,6 @@ async function setupSiteSpecificResourceBlocking(
     } resource blocking active - estimated ${
       isProxySite ? "70-85%" : "60-80%"
     } bandwidth savings`
-  );
-  console.log("�� [Backend] Allowing: HTML, JavaScript, XHR, Fetch requests");
-  console.log(
-    "�� [Backend] Blocking: Images, CSS, Fonts, Media, Tracking, Ads"
   );
 }
 
@@ -266,7 +245,7 @@ export async function scrapeAllSites(
   console.log("🏗️ [Backend] Setting up site configurations...");
   const siteConfigs: Record<string, SiteConfig> = {
     bca: bcaConfig(stagehandWithProxies),
-    CarToTrade: cartotradeConfig(stagehandWithoutProxies),
+    // CarToTrade: cartotradeConfig(stagehandWithoutProxies),
     motorway: motorwayConfig(stagehandWithoutProxies),
     carwow: carwowConfig(stagehandWithoutProxies),
     disposalnetwork: disposalnetworkConfig(stagehandWithoutProxies),
