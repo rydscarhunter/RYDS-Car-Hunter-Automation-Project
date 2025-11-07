@@ -176,18 +176,24 @@ export function bcaConfig(stagehand: any): SiteConfig {
 
         // STEP 2: Handle cookie consent banners
         // Try common cookie accept buttons
-        const cookieAccept = page.locator('button:has-text("Accept")');
-        if (await cookieAccept.isVisible()) {
-          await cookieAccept.first().click();
-        }
+        // const cookieAccept = page.locator('button:has-text("Accept")');
+        // if (await cookieAccept.isVisible()) {
+        //   await cookieAccept.first().click();
+        // }
 
-        // Or for overlays that use different buttons
-        const cookieReject = page.locator('button:has-text("Reject All")');
-        if (await cookieReject.first().isVisible()) {
-          await cookieReject.first().click();
-        }
+        // // Or for overlays that use different buttons
+        // const cookieReject = page.locator('button:has-text("Reject All")');
+        // if (await cookieReject.first().isVisible()) {
+        //   await cookieReject.first().click();
+        // }
 
         // Click Continue button to proceed to password step
+        await page.evaluate(() => {
+          const overlay = document.getElementById("onetrust-consent-sdk");
+          if (overlay) overlay.style.display = "none";
+        });
+
+        // Now click your Continue button
         await page.getByRole("button", { name: "Continue" }).click();
 
         // STEP 3: Wait for password form to load and fill password

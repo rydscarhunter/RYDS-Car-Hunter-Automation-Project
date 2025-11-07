@@ -42,7 +42,7 @@ const baseConfig: ConstructorParams = {
     },
   },
   localBrowserLaunchOptions: {
-    headless: true,
+    headless: false,
     viewport: {
       width: 1024,
       height: 768,

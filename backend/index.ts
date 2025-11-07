@@ -54,15 +54,6 @@ async function setupSiteSpecificResourceBlocking(
     const resourceType = route.request().resourceType();
     const url = route.request().url();
 
-    // Check if this is a login page - allow CSS for login pages
-    // Check both the request URL and the referer header
-    const referer = route.request().headers()["referer"] || "";
-    const isLoginPage =
-      url.includes("login.bca.co.uk") ||
-      url.includes("/login") ||
-      referer.includes("login.bca.co.uk") ||
-      referer.includes("/login");
-
     // Block specific resource types that consume bandwidth but aren't essential for scraping
     const blockedTypes = [
       "image", // Images (jpg, png, gif, svg, webp, ico)
@@ -72,8 +63,7 @@ async function setupSiteSpecificResourceBlocking(
     ];
 
     // For proxy sites (like BCA), also block CSS to save bandwidth
-    // BUT allow CSS on login pages where it's needed for UI elements
-    if (isProxySite && !isLoginPage) {
+    if (isProxySite) {
       blockedTypes.push("stylesheet"); // CSS files
     }
 
@@ -129,8 +119,7 @@ async function setupSiteSpecificResourceBlocking(
     ];
 
     // For proxy sites (like BCA), also block CSS file extensions
-    // BUT allow CSS on login pages where it's needed for UI elements
-    if (isProxySite && !isLoginPage) {
+    if (isProxySite) {
       blockedExtensions.push(".css", ".scss", ".sass", ".less", ".styl");
     }
 
@@ -355,30 +344,18 @@ export async function scrapeAllSites(
     await setupSiteSpecificResourceBlocking(newPage, siteConfig);
 
     // For proxy sites, also set up context-level blocking as backup
-    // BUT allow CSS on login pages where it's needed for UI elements
-    if (siteConfig.useProxies) {
+    if (siteConfig.useProxies && siteConfig.name !== "bca") {
       console.log(
-        `🔧 [Backend] Setting up context-level CSS blocking for ${siteConfig.name} (excluding login pages)`
+        `🔧 [Backend] Setting up context-level CSS blocking for ${siteConfig.name}`
       );
       await context.route("**/*.css", (route) => {
-        const url = route.request().url();
-        const isLoginPage =
-          url.includes("login.bca.co.uk") || url.includes("/login");
-
-        if (isLoginPage) {
-          console.log(
-            `✅ [Backend] Allowing CSS on login page: ${url.substring(
-              0,
-              80
-            )}...`
-          );
-          route.continue();
-        } else {
-          console.log(
-            `🚫 [Backend] Context-level CSS block: ${url.substring(0, 80)}...`
-          );
-          route.abort();
-        }
+        console.log(
+          `🚫 [Backend] Context-level CSS block: ${route
+            .request()
+            .url()
+            .substring(0, 80)}...`
+        );
+        route.abort();
       });
     }
 
